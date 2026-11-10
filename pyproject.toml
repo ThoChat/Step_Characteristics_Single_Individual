@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "step-analysis"
+version = "0.1.0"
+description = "First recovery step characteristics in the DeCIMo single-individual experiment"
+requires-python = ">=3.10"
+# Tested versions in comments
+dependencies = [
+    "numpy>=2.1",         # 2.5.4
+    "pandas>=2.2",        # 3.1.1
+    "scipy>=1.14",        # 1.18.1
+    "matplotlib>=3.9",    # 3.11.2
+    "seaborn>=0.13.2",    # 0.13.2
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",          # 9.2.0
+    "shapely>=2.0",       # 2.2.0, reference for validation.previous_code only
+]
+notebooks = [
+    "jupyter",            # notebook 7.6.5, nbconvert 7.17.2, ipykernel 7.4.0
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "previous: needs the previous analysis results / raw data (skipped if unavailable)",
+]
