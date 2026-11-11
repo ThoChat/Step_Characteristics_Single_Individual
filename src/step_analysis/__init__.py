@@ -10,6 +10,7 @@ methods/             The biomechanical methods (manuscript Sections 2.1-2.3)
     kinematics       Time derivative, perturbation timing, step detection.
     geometry         Segment intersection, foot polygons, heading, AP/ML decomposition.
     classification   Unified stepping strategy classification.
+    balance          Time to boundary, estimated perturbation angle.
 
 plotting/            Figures in the style of the previous work
     style            Palette, markers, fonts, legends.

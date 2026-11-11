@@ -6,7 +6,8 @@
 3. Open data vs previous raw exports differ exactly on UPDATED_TRIALS, and the
    previous version is always the shorter one.
 4. New functions == previous functions (reference copies) on every open-data
-   step trial (step detection, Unified label, step vector).
+   step trial (step detection, Unified label, step vector, minimal time to
+   boundary, estimated perturbation angle, peak force).
 """
 
 import numpy as np
@@ -69,3 +70,13 @@ def test_new_functions_match_previous_functions_on_open_data(open_table):
         assert np.allclose(old["StepVector"], [row.step_dx, row.step_dy], atol=1e-12)
         assert old["StepLength_xVcomRef"] == pytest.approx(row.step_length_x_vcom_ref, abs=1e-9)
         assert old["StepLength_yVcomRef"] == pytest.approx(row.step_length_y_vcom_ref, abs=1e-9)
+        if row.step_begin <= row.perturbation_start:  # empty Ttb window (S16 NI PL45_2, step before the push)
+            assert np.isnan(row.min_ttb)
+            continue
+        old = ref.PerturbationAngleBlock(*(trial[k] for k in ("RTOE", "LTOE", "LTAR", "LHEE", "RHEE", "RTAR", "COM",
+                                                              "ForceSensor")),
+                                         FirstStepBegIndex=old["FirstStepBegIndex"])
+        assert old["MinTtbIndex"] == row.min_ttb_frame
+        assert old["MinTtb"] == pytest.approx(row.min_ttb, abs=1e-9)
+        assert old["PerturbationAngle"] == pytest.approx(row.estimated_angle_deg, abs=1e-9)
+        assert old["MaxForce"] == pytest.approx(row.peak_force, abs=1e-9)

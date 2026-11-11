@@ -52,6 +52,9 @@ COMPARED_QUANTITIES = [
     ("perturbation_duration", "PerturbationDuration", "float"),
     ("final_com_x", "Final_CoM_x", "float"),
     ("final_com_y", "Final_CoM_y", "float"),
+    ("peak_force", "MaxForce", "float"),
+    ("min_ttb", "MinTtb", "float"),
+    ("estimated_angle_deg", "PerturbationAngle", "float"),
 ]
 STEP_ONLY = {"step_begin", "strategy", "step_duration", "step_dist",
              "step_length_x_vcom_ref", "step_length_y_vcom_ref"}

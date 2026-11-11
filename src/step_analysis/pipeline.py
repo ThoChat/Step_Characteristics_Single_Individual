@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from . import config, data_io
-from .methods import geometry, kinematics
+from .methods import balance, geometry, kinematics
 from .methods.classification import unified_classification
 
 # Experimental mistake documented in the previous analysis: this push was
@@ -49,7 +49,14 @@ def process_trial(participant, condition, push_folder, height, data_dir=None, lo
         - identification: ``participant, condition, sc_index, push_folder,
           push, angle, height``;
         - perturbation: ``perturbation_start, perturbation_end`` (frames),
-          ``perturbation_duration`` (s), ``impulse`` (N.s), ``no_push`` (bool);
+          ``perturbation_duration`` (s), ``impulse`` (N.s), ``peak_force`` (N,
+          perturbation intensity), ``no_push`` (bool);
+        - minimal time to boundary between perturbation onset and t_begin (or
+          the end of the push + 1 s without step): ``min_ttb`` (s),
+          ``min_ttb_frame``; estimated perturbation angle (CoM velocity
+          direction at min Ttb, deg, 0 forward, + towards the participant's
+          left): ``estimated_angle_deg``, and in the stepping-leg frame
+          (+ lateral side of the stepping leg) ``estimated_angle_lateral_deg``;
         - detection: ``step_index`` (0 / 1 / 1.1 / 2), ``n_steps``,
           ``stepping_foot`` ("R"/"L"/"X"), ``step_begin, step_end`` (frames),
           ``step_duration`` (s);
@@ -98,8 +105,10 @@ def process_trial(participant, condition, push_folder, height, data_dir=None, lo
         perturbation_end=end,
         perturbation_duration=(end - start) * config.DT,
         impulse=imp,
+        peak_force=kinematics.peak_force(force),
         no_push=imp < config.NO_PUSH_IMPULSE,
     )
+    vcom = kinematics.temporal_deriv(trial["COM"][:2])
 
     # --- Participant heading at perturbation initiation --------------------
     ap_feet = geometry.heading_from_feet(trial, start)
@@ -113,6 +122,13 @@ def process_trial(participant, condition, push_folder, height, data_dir=None, lo
     feet, steps = kinematics.step_detector(trial["RTOE"], trial["LTOE"], exception=(detection_angle == "90"))
     step_index = kinematics.step_index_code(feet)
     row["step_index"] = step_index
+
+    # --- Minimal Ttb and estimated perturbation angle (previous windows) ----
+    if step_index == 2:
+        ttb_stop = steps[0][0]
+    else:
+        ttb_stop = min(end + balance.NO_STEP_WINDOW_FRAMES, trial["COM"].shape[1] - 1)
+    row.update(balance.estimated_perturbation_angle(trial, start, ttb_stop, vcom))
     if step_index != 2:
         row.update(stepping_foot="X", n_steps=0, strategy="NS" if step_index == 0 else "LA")
         return row
@@ -125,6 +141,7 @@ def process_trial(participant, condition, push_folder, height, data_dir=None, lo
         step_begin=begin,
         step_end=end_step,
         step_duration=(end_step - begin) * config.DT,
+        estimated_angle_lateral_deg=float(balance.lateral_angle(row["estimated_angle_deg"], foot)),
     )
 
     # --- Unified classification --------------------------------------------
@@ -138,7 +155,7 @@ def process_trial(participant, condition, push_folder, height, data_dir=None, lo
 
     # --- Step vector and decompositions --------------------------------------
     vec = geometry.step_vector(trial[foot + "TOE"], begin, end_step)
-    v_begin = kinematics.temporal_deriv(trial["COM"][:2])[:, begin]  # CoM velocity at t_begin
+    v_begin = vcom[:, begin]  # CoM velocity at t_begin
     x_ref = v_begin / np.linalg.norm(v_begin)
     y_ref = np.array([x_ref[1], -x_ref[0]])
     ap_lab, ml_lab = geometry.decompose(vec)
@@ -209,7 +226,8 @@ def build_first_step_table(trials=None, cache_file=config.FIRST_STEP_TABLE_FILE,
         for t in trials.itertuples()
     ]
     table = pd.DataFrame(rows)
-    for col in ("step_begin", "step_end", "front_crossing_frame", "polygon_hit_frame", "crossover", "n_steps"):
+    for col in ("step_begin", "step_end", "front_crossing_frame", "polygon_hit_frame", "crossover", "n_steps",
+                "min_ttb_frame"):
         table[col] = table[col].astype("Int64")
     if cache_file is not None:
         Path(cache_file).parent.mkdir(parents=True, exist_ok=True)

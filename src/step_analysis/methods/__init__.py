@@ -1,3 +1,3 @@
-"""Biomechanical methods: step detection, geometry and Unified classification."""
+"""Biomechanical methods: step detection, geometry, Unified classification, time to boundary."""
 
-from . import classification, geometry, kinematics  # noqa: F401
+from . import balance, classification, geometry, kinematics  # noqa: F401

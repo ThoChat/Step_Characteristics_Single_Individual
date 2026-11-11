@@ -2,10 +2,12 @@
 
 Copied from ``AnalysisBasics.py`` and ``AllQty_Dataframe.py`` with only these
 changes: explicit numpy imports instead of ``from pylab import *``, debug
-plotting removed, and the first-step block of ``CreateAllQtyDF`` wrapped in a
-function (:func:`FirstStepBlock`). They are the ground truth of ``tests/`` and of
-``notebooks/02_Analysis_Test.ipynb``:
-the new implementation must return the same values.
+plotting and printing removed, and two blocks of ``CreateAllQtyDF`` wrapped in
+functions: the first step (:func:`FirstStepBlock`) and the minimal time to
+boundary with the empirical perturbation angle (:func:`PerturbationAngleBlock`).
+They are the ground truth of ``tests/`` and of
+``notebooks/02_Analysis_Test.ipynb``: the new implementation must return the
+same values.
 """
 
 import matplotlib.path as mplPath
@@ -238,4 +240,220 @@ def FirstStepBlock(RTOE, RTARI, RHEE, RTAR, LTOE, LTARI, LHEE, LTAR, COM, except
         FirstStepDuration=(FirstStepEndIndex - b) * dt,
         StepLength_xVcomRef=StepVector.dot(Vect_X_axis_VcomRef),
         StepLength_yVcomRef=StepVector.dot(Vect_Y_axis_VcomRef),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Time to boundary and empirical perturbation angle (AnalysisBasics.py)
+# ---------------------------------------------------------------------------
+def orientation(p, q, r):
+    val = (float(q[1] - p[1]) * (r[0] - q[0])) - (float(q[0] - p[0]) * (r[1] - q[1]))
+    if val > 0:
+        return 1
+    elif val < 0:
+        return 2
+    else:
+        return 0
+
+
+def onSegment(p, q, r):
+    if (
+        (q[0] <= max(p[0], r[0]))
+        and (q[0] >= min(p[0], r[0]))
+        and (q[1] <= max(p[1], r[1]))
+        and (q[1] >= min(p[1], r[1]))
+    ):
+        return True
+    return False
+
+
+def doIntersect(p1, q1, p2, q2):
+    o1 = orientation(p1, q1, p2)
+    o2 = orientation(p1, q1, q2)
+    o3 = orientation(p2, q2, p1)
+    o4 = orientation(p2, q2, q1)
+    if (o1 != o2) and (o3 != o4):
+        return True
+    if (o1 == 0) and onSegment(p1, p2, q1):
+        return True
+    if (o2 == 0) and onSegment(p1, q2, q1):
+        return True
+    if (o3 == 0) and onSegment(p2, p1, q2):
+        return True
+    if (o4 == 0) and onSegment(p2, q1, q2):
+        return True
+    return False
+
+
+def crossing_point(A1, B1, A2, B2):
+    if (A1[0] - B1[0]) != 0 and (A2[0] - B2[0]) != 0:
+        a1 = (A1[1] - B1[1]) / (A1[0] - B1[0])
+        a2 = (A2[1] - B2[1]) / (A2[0] - B2[0])
+        b1 = -1
+        b2 = -1
+        c1 = A1[1] - a1 * A1[0]
+        c2 = A2[1] - a2 * A2[0]
+        try:
+            return array(
+                [
+                    (b1 * c2 - b2 * c1) / (a1 * b2 - a2 * b1),
+                    (c1 * a2 - a1 * c2) / (a1 * b2 - a2 * b1),
+                ]
+            )
+        except Exception:
+            return None
+    elif (A1[0] - B1[0]) == 0 and (A2[0] - B2[0]) != 0:
+        a2 = (A2[1] - B2[1]) / (A2[0] - B2[0])
+        c2 = A2[1] - a2 * A2[0]
+        return array([A1[0], a2 * A1[0] + c2])
+    elif (A2[0] - B2[0]) == 0 and (A1[0] - B1[0]) != 0:
+        a1 = (A1[1] - B1[1]) / (A1[0] - B1[0])
+        c1 = A1[1] - a1 * A1[0]
+        return array([A2[0], a1 * A2[0] + c1])
+    elif (A2[0] - B2[0]) == 0 and (A1[0] - B1[0]) == 0:
+        return None
+    else:
+        return -1
+
+
+def closest_point_seg(a, b, c):
+    u = array(a) - array(c)
+    v = array(b) - array(a)
+    t = -v.dot(u) / v.dot(v)
+    if t >= 0 and t <= 1:
+        return (1 - t) * array(a) + t * array(b)
+    elif v.dot(v) + 2 * (v.dot(u)) + u.dot(u) > u.dot(u):
+        return a
+    else:
+        return b
+
+
+def BoSSegmentClosestCrossingPoint(XBoS_t, YBoS_t, COM_t):
+    TwoDCoM_t = COM_t[:2]
+    NbSeg = len(XBoS_t) - 1
+    MinBoSIndex = argmin(
+        [
+            dist_point(
+                closest_point_seg(
+                    array([XBoS_t[i], YBoS_t[i]]),
+                    array([XBoS_t[i + 1], YBoS_t[i + 1]]),
+                    TwoDCoM_t,
+                ),
+                TwoDCoM_t,
+            )
+            for i in range(NbSeg)
+        ]
+    )
+    return closest_point_seg(
+        array([XBoS_t[MinBoSIndex], YBoS_t[MinBoSIndex]]),
+        array([XBoS_t[MinBoSIndex + 1], YBoS_t[MinBoSIndex + 1]]),
+        TwoDCoM_t,
+    )
+
+
+def BoSSegmentCrossingPoint(XBoS_t, YBoS_t, COM_t, VCOM_t, Method="Both", debug=True):
+    TwoDCoM_t = COM_t[:2]
+    TwoDVCoM_t = VCOM_t[:2]
+    TwoDFarVCoMProjection_t = TwoDCoM_t + TwoDVCoM_t / norm(TwoDVCoM_t)
+    NbSeg = len(XBoS_t) - 1
+
+    if Method == "VelBased" or Method == "Both":
+        for i in range(NbSeg):
+            if doIntersect(
+                array([XBoS_t[i], YBoS_t[i]]),
+                array([XBoS_t[i + 1], YBoS_t[i + 1]]),
+                TwoDCoM_t,
+                TwoDFarVCoMProjection_t,
+            ):
+                return crossing_point(
+                    array([XBoS_t[i], YBoS_t[i]]),
+                    array([XBoS_t[i + 1], YBoS_t[i + 1]]),
+                    TwoDCoM_t,
+                    TwoDFarVCoMProjection_t,
+                )
+    if Method == "VelBased":
+        return None
+    if Method == "CloserPoint" or Method == "Both":
+        TwoDNegFarVCoMProjection_t = TwoDCoM_t - TwoDVCoM_t / norm(TwoDVCoM_t)
+        CurrentCrossingPoint = array([1e5, 1e5])
+        for i in range(NbSeg):
+            if doIntersect(
+                array([XBoS_t[i], YBoS_t[i]]),
+                array([XBoS_t[i + 1], YBoS_t[i + 1]]),
+                TwoDCoM_t,
+                TwoDNegFarVCoMProjection_t,
+            ):
+                C = crossing_point(
+                    array([XBoS_t[i], YBoS_t[i]]),
+                    array([XBoS_t[i + 1], YBoS_t[i + 1]]),
+                    TwoDCoM_t,
+                    TwoDFarVCoMProjection_t,
+                )
+                if dist_point(C, TwoDCoM_t) < dist_point(CurrentCrossingPoint, TwoDCoM_t):
+                    CurrentCrossingPoint = C
+        if debug and norm(CurrentCrossingPoint) > 1e4:
+            CurrentCrossingPoint = BoSSegmentClosestCrossingPoint(XBoS_t, YBoS_t, COM_t)
+        return CurrentCrossingPoint
+
+
+def ChangeOfBasis(Vect3D, PassingMatrix):
+    return np.array(
+        [
+            sum(PassingMatrix[0] * Vect3D),
+            sum(PassingMatrix[1] * Vect3D),
+            sum(PassingMatrix[2] * Vect3D),
+        ]
+    )
+
+
+def PerturbationAngleBlock(RTOE, LTOE, LTAR, LHEE, RHEE, RTAR, COM, Force, FirstStepBegIndex=None):
+    """Min Ttb and empirical perturbation angle blocks of ``CreateAllQtyDF``.
+
+    ``FirstStepBegIndex`` is the first step t_begin for step trials, None for
+    the other trials (the window then ends 1 s after the end of the push, as
+    in the previous code).
+
+    Returns
+    -------
+    dict
+        MinTtb, MinTtbIndex, PerturbationAngle, MaxForce.
+    """
+    Nbframes = len(COM[0])
+    VCOM = array([TemporalDeriv(x, dt) for x in COM])
+    S, E = ComputePerturbationDuration(Force)
+
+    BoS3D = array(
+        [
+            [RTOE[:, i], LTOE[:, i], LTAR[:, i], LHEE[:, i], RHEE[:, i], RTAR[:, i], RTOE[:, i]]
+            for i in range(Nbframes)
+        ]
+    )
+    XBoS = [BoS3D[i, :, 0] for i in range(Nbframes)]
+    YBoS = [BoS3D[i, :, 1] for i in range(Nbframes)]
+
+    if FirstStepBegIndex is None:
+        FirstStepBegIndex = min(E + 200, Nbframes - 1)
+
+    Nbframes_computation = len(COM[0, S:FirstStepBegIndex])
+    ArrTtb = zeros(Nbframes_computation)
+    for i in range(S, S + Nbframes_computation):
+        C = BoSSegmentCrossingPoint(XBoS[i], YBoS[i], COM[:, i], VCOM[:, i])
+        Speed_i = norm(VCOM[:2, i])
+        Dtb_i = vect(COM[:2, i], C).dot(VCOM[:2, i] / Speed_i)
+        ArrTtb[i - S] = Dtb_i / Speed_i
+    MinTtb = min(ArrTtb)
+    MinTtbIndex = S + argmin(ArrTtb)
+
+    cosT = np.cos(np.pi / 2)
+    sinT = np.sin(np.pi / 2)
+    CoBmatrix = array([[cosT, sinT, 0], [-sinT, cosT, 0], [0, 0, 1]])
+    VCOM_NR = array([ChangeOfBasis(x, CoBmatrix) for x in VCOM.T]).T
+    PerturbationAngle = sign(VCOM_NR[1, MinTtbIndex]) * (
+        np.arccos(VCOM_NR[:2, MinTtbIndex][0] / norm(VCOM_NR[:2, MinTtbIndex])) * 180 / np.pi
+    )
+    return dict(
+        MinTtb=MinTtb,
+        MinTtbIndex=MinTtbIndex,
+        PerturbationAngle=PerturbationAngle,
+        MaxForce=max(Force - Force[-1]),
     )

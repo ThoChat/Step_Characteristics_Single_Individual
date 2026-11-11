@@ -1,6 +1,6 @@
-# First recovery step characteristics (DeCIMo, single individuals)
+# First recovery step characteristics of single individuals
 
-Where does the stepping foot land after the first lateral recovery step (UMS, LSS, UCS)? The step vector is decomposed into anteroposterior / mediolateral components, in % of body height. The methods follow the manuscript (`data/Manuscript.pdf`) and the previous analysis code (`DeCIMo-analysis`).
+Where does the stepping foot land after the first lateral recovery step (UMS, LSS, UCS)? The step vector is decomposed into anteroposterior / mediolateral components, in % of body height.
 
 ## Repository layout
 
@@ -10,9 +10,6 @@ Where does the stepping foot land after the first lateral recovery step (UMS, LS
 │   ├── Anatomical_Info.csv        participant height, mass, ...
 │   ├── Pushes_Names.csv
 │   └── Manuscript.pdf
-├── docs/
-│   ├── PLAN_first_step_decomposition.md   analysis plan and review decisions
-│   └── OPENSOURCE_DATA_ERRORS.md          problems found in the open dataset
 ├── notebooks/
 │   ├── 01_First_Step_Decomposition.ipynb  the analysis: figures and statistics
 │   └── 02_Analysis_Test.ipynb             graphical report of every test
@@ -23,10 +20,10 @@ Where does the stepping foot land after the first lateral recovery step (UMS, LS
 │   ├── config.py                  paths, sampling period, detection parameters
 │   ├── data_io.py                 reading the open data
 │   ├── pipeline.py                trial -> first-step table
-│   ├── methods/                   kinematics, geometry, Unified classification
+│   ├── methods/                   kinematics, geometry, Unified classification, time to boundary
 │   ├── plotting/                  style of the previous figures, figure functions
 │   └── validation/                previous results, reference copies of the previous code, synthetic trials
-├── tests/                         pytest suite (49 tests)
+├── tests/                         pytest suite (76 tests)
 └── pyproject.toml                 package, dependencies, pytest settings
 ```
 
@@ -42,7 +39,7 @@ The notebooks in reading order:
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[test,notebooks]"   # editable install of src/step_analysis
-.venv/bin/python -m pytest                     # 49 tests, ~45 s
+.venv/bin/python -m pytest                     # 76 tests, ~50 s
 .venv/bin/jupyter notebook notebooks/
 ```
 
@@ -54,4 +51,4 @@ The cross-validation needs the previous analysis folder and the raw files it use
 
 ## Data note
 
-26 trials of the open dataset contain an earlier, longer version of the recording than the files used by the previous analysis. The list is `UPDATED_TRIALS` in `src/step_analysis/validation/previous_results.py`. Details are in `notebooks/02_Analysis_Test.ipynb`, §3.1, and `docs/OPENSOURCE_DATA_ERRORS.md`.
+26 trials of the open dataset contain an earlier, longer version of the recording than the files used by the previous analysis. The list is `UPDATED_TRIALS` in `src/step_analysis/validation/previous_results.py`. Details are in `notebooks/02_Analysis_Test.ipynb`, §3.1.

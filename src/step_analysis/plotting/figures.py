@@ -3,6 +3,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from matplotlib.colors import Normalize
+from matplotlib.patches import Circle, Wedge
 
 from .. import config
 from . import style
@@ -31,6 +33,52 @@ def _direction_labels(ax, left, right, top="Anterior", bottom="Posterior"):
     ax.text(0.985, 0.015, f"{right} →", transform=ax.transAxes, ha="right", va="bottom", **DIRECTION_TEXT_KW)
     ax.text(0.5, 0.985, f"↑ {top}", transform=ax.transAxes, ha="center", va="top", **DIRECTION_TEXT_KW)
     ax.text(0.5, 0.015, f"↓ {bottom}", transform=ax.transAxes, ha="center", va="bottom", **DIRECTION_TEXT_KW)
+
+
+def _decomposition_axes(ax, sub, x, frame, xlim, ylim, tick_step, show_feet):
+    """Draw the frame shared by the decomposition plots (everything except the points).
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+    sub : pandas.DataFrame
+        Plotted rows (used for the default limits and the feet outlines).
+    x : str
+        Column on the horizontal axis (``ml_pct`` or ``ml_lateral_pct``).
+    frame : {"lateral", "anatomical"}
+        Frame of the ML axis, see :func:`plot_decomposition`.
+    xlim, ylim : (float, float) or None
+        Axis limits (% body height). None: fitted to the data.
+    tick_step : float
+        Tick and grid spacing (% body height).
+    show_feet : bool
+        In the lateral frame, draw the mean initial outlines of the feet.
+
+    Returns
+    -------
+    None
+        Draws the feet outlines, the axes through the origin, limits, ticks,
+        dotted grid, direction labels and axis labels.
+    """
+    y = "ap_pct"
+    xlim = xlim or style.symmetric_limits(sub[x], step=tick_step)
+    ylim = ylim or style.symmetric_limits(sub[y], step=tick_step)
+    if show_feet and frame == "lateral":
+        feet = style.mean_feet_outlines(sub)
+        ax.fill(*feet["nsf"].T, facecolor="0.88", edgecolor="0.5", lw=1.5, zorder=1)
+        ax.plot(*feet["sf"].T, color="0.35", lw=1.5, ls="--", zorder=1)
+    ax.axhline(0, color="k", lw=1, alpha=0.6, zorder=1)
+    ax.axvline(0, color="k", lw=1, alpha=0.6, zorder=1)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_aspect("equal")
+    ax.set_xticks(np.arange(xlim[0], xlim[1] + 1e-9, tick_step))
+    ax.set_yticks(np.arange(ylim[0], ylim[1] + 1e-9, tick_step))
+    ax.tick_params(labelsize=FONT_SIZE - 2)
+    style.dotted_grid(ax)
+    left, right = ("Medial", "Lateral") if frame == "lateral" else ("Left", "Right")
+    _direction_labels(ax, left, right)
+    style.set_labels(ax, xlabel="Mediolateral (% body height)", ylabel="Anteroposterior (% body height)")
 
 
 def plot_decomposition(ax, df, frame="lateral", strategies=STRATEGY_ORDER, xlim=None, ylim=None,
@@ -70,18 +118,8 @@ def plot_decomposition(ax, df, frame="lateral", strategies=STRATEGY_ORDER, xlim=
     x = "ml_lateral_pct" if frame == "lateral" else "ml_pct"
     y = "ap_pct"
     sub = df[df["strategy"].isin(strategies)]
-    xlim = xlim or style.symmetric_limits(sub[x], step=tick_step)
-    ylim = ylim or style.symmetric_limits(sub[y], step=tick_step)
-
-    if show_feet and frame == "lateral":
-        feet = style.mean_feet_outlines(sub)
-        ax.fill(*feet["nsf"].T, facecolor="0.88", edgecolor="0.5", lw=1.5, zorder=1)
-        ax.plot(*feet["sf"].T, color="0.35", lw=1.5, ls="--", zorder=1)
-
-    ax.axhline(0, color="k", lw=1, alpha=0.6, zorder=1)
-    ax.axvline(0, color="k", lw=1, alpha=0.6, zorder=1)
+    _decomposition_axes(ax, sub, x, frame, xlim, ylim, tick_step, show_feet)
     style.scatter_strategies(ax, sub, x, y, strategies)
-
     if show_medians:
         for s in strategies:
             med = sub.loc[sub["strategy"] == s, [x, y]].median()
@@ -90,16 +128,265 @@ def plot_decomposition(ax, df, frame="lateral", strategies=STRATEGY_ORDER, xlim=
                         fontweight="bold", zorder=8,
                         bbox=dict(facecolor="white", edgecolor="0.3", alpha=0.85, boxstyle="round,pad=0.2"))
 
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    ax.set_aspect("equal")
-    ax.set_xticks(np.arange(xlim[0], xlim[1] + 1e-9, tick_step))
-    ax.set_yticks(np.arange(ylim[0], ylim[1] + 1e-9, tick_step))
-    ax.tick_params(labelsize=FONT_SIZE - 2)
-    style.dotted_grid(ax)
+
+def plot_decomposition_colored(ax, df, column, cmap, norm, frame="lateral", xlim=None, ylim=None,
+                               tick_step=10, show_feet=True):
+    """Decomposition scatter (as :func:`plot_decomposition`) coloured by a continuous column.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+    df : pandas.DataFrame
+        Rows to plot, e.g. one strategy (``ml_pct``, ``ml_lateral_pct``,
+        ``ap_pct``, ``condition``, ``column``; polygon columns for the feet).
+    column : str
+        Column mapped to the marker colour (e.g. ``"estimated_angle_lateral_deg"``).
+    cmap : str or matplotlib.colors.Colormap
+        Colormap.
+    norm : matplotlib.colors.Normalize
+        Value range of the colormap.
+    frame : {"lateral", "anatomical"}, optional
+        ML frame, see :func:`plot_decomposition`.
+    xlim, ylim : (float, float), optional
+        Axis limits (% body height). Default: fitted to the data.
+    tick_step : float, optional
+        Tick and grid spacing (% body height).
+    show_feet : bool, optional
+        In the lateral frame, draw the mean initial outlines of the feet.
+
+    Returns
+    -------
+    matplotlib.collections.PathCollection
+        The scatter of the last condition, to pass to :func:`add_colorbar`
+        (all conditions share ``cmap``, ``norm`` and the marker alpha).
+    """
+    x = "ml_lateral_pct" if frame == "lateral" else "ml_pct"
+    _decomposition_axes(ax, df, x, frame, xlim, ylim, tick_step, show_feet)
+    mappable = None
+    for condition, marker in style.CONDITION_MARKERS.items():
+        sub = df[df["condition"] == condition]
+        mappable = ax.scatter(sub[x], sub["ap_pct"], c=sub[column], cmap=cmap, norm=norm, marker=marker,
+                              s=style.MARKER_SIZE, edgecolors="k", linewidths=1, alpha=style.MARKER_ALPHA, zorder=3)
+    return mappable
+
+
+def add_colorbar(ax, mappable, label, ticks=None, extend="neither"):
+    """Vertical colorbar on the right of an axes, with the height of the axes.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes the colorbar is attached to (also works with an equal aspect).
+    mappable : matplotlib.cm.ScalarMappable
+        E.g. the output of :func:`plot_decomposition_colored`. Its alpha is
+        used, so the colorbar matches semi-transparent markers.
+    label : str
+        Colorbar label.
+    ticks : array_like, optional
+        Tick positions (colour-scale units).
+    extend : {"neither", "both", "min", "max"}, optional
+        Arrows for values outside the colour range.
+
+    Returns
+    -------
+    matplotlib.colorbar.Colorbar
+    """
+    cax = ax.inset_axes([1.03, 0.0, 0.04, 1.0])
+    cbar = ax.figure.colorbar(mappable, cax=cax, ticks=ticks, extend=extend)
+    cbar.set_label(label, fontsize=FONT_SIZE - 4, fontstyle="italic")
+    cbar.ax.tick_params(labelsize=FONT_SIZE - 6)
+    cbar.outline.set_linewidth(0.8)
+    return cbar
+
+
+def _fan_direction(angle_deg):
+    """Unit vector (ML, AP) of an angle measured from anterior, + towards + ML.
+
+    Parameters
+    ----------
+    angle_deg : float or array_like
+        Angle (deg): 0 = anterior (+ AP, up in the plots), +90 = + ML (right),
+        -90 = - ML (left), +/-180 = posterior.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``[sin(angle), cos(angle)]``: plot x and y of the direction.
+    """
+    a = np.radians(angle_deg)
+    return np.array([np.sin(a), np.cos(a)])
+
+
+def _fan_alignment(d):
+    """Text alignment of a label placed outwards in direction ``d`` (unit vector)."""
+    ha = "left" if d[0] > 0.3 else "right" if d[0] < -0.3 else "center"
+    va = "bottom" if d[1] > 0.3 else "top" if d[1] < -0.3 else "center"
+    return dict(ha=ha, va=va)
+
+
+def plot_angle_fan(ax, cmap, norm, ticks=None, label=None, frame="lateral", alpha=style.MARKER_ALPHA,
+                   inner=0.3, step=1.0):
+    """Colour scale of an angle drawn as a fan, in the orientation of the decomposition plots.
+
+    Each colour is drawn in the direction it stands for, in the axes of the
+    decomposition plots (x = ML, y = AP): an angle measured from anterior,
+    positive towards + ML, points to ``(sin(angle), cos(angle))``. A faint
+    compass (circle, ML / AP axes, direction names) shows the orientation.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Square axes reserved for the fan. Its axis is turned off. Tick labels,
+        direction names and ``label`` are drawn outside the axes box, so leave
+        about 1 inch of free space around it.
+    cmap : str or matplotlib.colors.Colormap
+        Colormap of the markers.
+    norm : matplotlib.colors.Normalize
+        Angle range of the colormap (deg). The fan spans ``[vmin, vmax]``.
+    ticks : array_like, optional
+        Tick angles (deg). Ticks outside the fan are not drawn.
+    label : str, optional
+        Text written under the fan.
+    frame : {"lateral", "anatomical"}, optional
+        Names of the - / + ML directions: Medial / Lateral or Left / Right.
+    alpha : float, optional
+        Marker alpha. The colours are blended with white by this alpha so the
+        fan matches semi-transparent markers on a white background.
+    inner : float, optional
+        Inner radius of the fan (outer radius = 1).
+    step : float, optional
+        Angular resolution of the colour gradient (deg).
+
+    Returns
+    -------
+    None
+    """
+    cmap = plt.get_cmap(cmap)
+    lo, hi = norm.vmin, norm.vmax
+    guide = dict(color="0.6", lw=0.8, zorder=1)
+    ax.add_patch(Circle((0, 0), 1, fill=False, ls=":", **guide))
+    ax.plot([-1, 1], [0, 0], **guide)
+    ax.plot([0, 0], [-1, 1], **guide)
+    # Wedge angles are counter-clockwise from +x: an angle a from anterior is drawn at 90 - a
+    edges = np.linspace(lo, hi, max(int(np.ceil((hi - lo) / step)), 1) + 1)
+    for a, b in zip(edges[:-1], edges[1:]):
+        rgb = alpha * np.asarray(cmap(norm(0.5 * (a + b)))[:3]) + (1 - alpha)
+        ax.add_patch(Wedge((0, 0), 1, 90 - b, 90 - a, width=1 - inner, facecolor=rgb, edgecolor=rgb,
+                           lw=0.5, zorder=2))
+    ax.add_patch(Wedge((0, 0), 1, 90 - hi, 90 - lo, width=1 - inner, fill=False, edgecolor="k", lw=0.8,
+                       zorder=3))
+    ax.scatter(0, 0, s=25, c="k", zorder=3)
+
+    tick_labels = {}
+    for t in [] if ticks is None else ticks:
+        if not lo - 1e-9 <= t <= hi + 1e-9:
+            continue
+        d = _fan_direction(t)
+        ax.plot(*np.c_[1.0 * d, 1.08 * d], color="k", lw=0.8, zorder=3)
+        tick_labels[(t + 180) % 360 - 180] = ax.text(*(1.12 * d), f"{t:.0f}°".replace("-", "−"),
+                                                     fontsize=FONT_SIZE - 8, zorder=3, **_fan_alignment(d))
+    # Direction names: just outside the tick label of the same direction if there is one
     left, right = ("Medial", "Lateral") if frame == "lateral" else ("Left", "Right")
-    _direction_labels(ax, left, right)
-    style.set_labels(ax, xlabel="Mediolateral (% body height)", ylabel="Anteroposterior (% body height)")
+    text_kw = dict(fontsize=FONT_SIZE - 8, fontstyle="italic", color="0.3")
+    for angle, name in ((0, "Anterior"), (90, right), (-90, left), (-180, "Posterior")):
+        d = _fan_direction(angle)
+        align = _fan_alignment(d)
+        tick = tick_labels.get(angle)
+        if tick is None:
+            ax.text(*(1.12 * d), name, **align, **text_kw)
+        else:
+            ax.annotate(name, xy=(0.5 + 0.5 * d[0], 0.5 + 0.5 * d[1]), xycoords=tick,
+                        xytext=(4 * d[0], 4 * d[1]), textcoords="offset points", **align, **text_kw)
+    if label is not None:
+        ax.text(0.5, -0.2, label, transform=ax.transAxes, ha="center", va="top", fontsize=FONT_SIZE - 6,
+                fontstyle="italic")
+    ax.set_xlim(-1.15, 1.15)
+    ax.set_ylim(-1.15, 1.15)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+
+def plot_perturbation_descriptors(df, ylim=None, tick_step=10, angle_step=22.5, force_step=10,
+                                  panel_height=6.0):
+    """End positions of one strategy coloured by the perturbation angle and intensity.
+
+    Two decomposition plots in the stepping-leg frame (as Figure 1 b), zoomed
+    on the trials of ``df``: (a) estimated perturbation angle, with its colour
+    scale drawn as a fan in the orientation of the plot
+    (:func:`plot_angle_fan`), between the panels; (b) peak force, with a
+    colorbar.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Rows of one strategy (``ml_pct``, ``ml_lateral_pct``, ``ap_pct``,
+        ``condition``, ``strategy``, ``estimated_angle_lateral_deg``,
+        ``peak_force``; polygon columns for the feet).
+    ylim : (float, float), optional
+        AP limits (% body height), e.g. those of Figure 1 to keep its scale.
+        Default: fitted to the data.
+    tick_step : float, optional
+        Tick and grid spacing (% body height).
+    angle_step, force_step : float, optional
+        The colour ranges cover all values of ``df``, rounded outwards to these
+        steps (deg, N).
+    panel_height : float, optional
+        Height of the two plots (inches). Their width follows from the axis
+        limits (equal scale on both axes).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axes : list of matplotlib.axes.Axes
+        The two decomposition panels.
+
+    Notes
+    -----
+    The ML limits cover the trials and the mean initial outlines of both feet,
+    so the base of support stays visible whichever side the strategy lands on.
+    The layout is fixed in inches (no ``tight_layout``): save with
+    ``bbox_inches="tight"``.
+    """
+    feet = style.mean_feet_outlines(df)
+    xlim = style.symmetric_limits(np.r_[df["ml_lateral_pct"], feet["sf"][:, 0], feet["nsf"][:, 0]],
+                                  step=tick_step)
+    ylim = ylim or style.symmetric_limits(df["ap_pct"], step=tick_step)
+    a, f = df["estimated_angle_lateral_deg"], df["peak_force"]
+    angle_norm = Normalize(np.floor(a.min() / angle_step) * angle_step, np.ceil(a.max() / angle_step) * angle_step)
+    force_norm = Normalize(np.floor(f.min() / force_step) * force_step, np.ceil(f.max() / force_step) * force_step)
+
+    # Layout (inches): margin | plot a | gap | fan | gap | margin | plot b | colorbar
+    h = panel_height
+    w = h * (xlim[1] - xlim[0]) / (ylim[1] - ylim[0])
+    margin, gap, fan, cbar, bottom, top = 1.5, 1.0, 2.6, 1.7, 1.1, 0.6
+    width, height = margin + w + 2 * gap + fan + margin + w + cbar, bottom + h + top
+    fig = plt.figure(figsize=(width, height))
+
+    def box(x0, y0, wi, he):
+        return [x0 / width, y0 / height, wi / width, he / height]
+
+    x_fan = margin + w + gap
+    axes = [fig.add_axes(box(margin, bottom, w, h)), fig.add_axes(box(x_fan + fan + gap + margin, bottom, w, h))]
+    plot_decomposition_colored(axes[0], df, "estimated_angle_lateral_deg", "turbo", angle_norm,
+                               xlim=xlim, ylim=ylim, tick_step=tick_step)
+    plot_angle_fan(fig.add_axes(box(x_fan, bottom + (h - fan) / 2, fan, fan)), "turbo", angle_norm,
+                   ticks=np.arange(-180, 181, 15),
+                   label="Estimated perturbation angle\n(direction of the CoM motion)")
+    sc = plot_decomposition_colored(axes[1], df, "peak_force", "coolwarm", force_norm,
+                                    xlim=xlim, ylim=ylim, tick_step=tick_step)
+    add_colorbar(axes[1], sc, "Peak perturbation force (N)", ticks=np.arange(0, 301, 20))
+    style.set_labels(axes[0], title="(a) Estimated perturbation angle")
+    style.set_labels(axes[1], title="(b) Perturbation intensity")
+
+    handles, labels = style.condition_handles()
+    handles += [plt.Line2D([0], [0], color="0.35", lw=1.5, ls="--"),
+                plt.Rectangle((0, 0), 1, 1, facecolor="0.88", edgecolor="0.5")]
+    labels += ["Stepping foot at t_begin (mean)", "Other foot at t_begin (mean)"]
+    strategy = " / ".join(df["strategy"].unique())
+    fig.legend(handles, labels, loc="upper center", ncol=4, fontsize=FONT_SIZE - 6, frameon=True,
+               title=f"{strategy}, n = {len(df)} trials", title_fontsize=FONT_SIZE - 6,
+               bbox_to_anchor=(0.5, 0.2 / height))
+    return fig, axes
 
 
 def decomposition_legends(ax, df, strategies=STRATEGY_ORDER, loc=(1.03, 0.45), show_feet=True):

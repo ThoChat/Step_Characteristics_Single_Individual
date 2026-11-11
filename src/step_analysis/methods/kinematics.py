@@ -315,3 +315,24 @@ def impulse(force, start, end, dt=config.DT):
     """
     f = np.asarray(force, dtype=float) - force[-1]
     return float(np.sum((f[start:end] + f[start + 1:end + 1]) * 0.5) * dt)
+
+
+def peak_force(force):
+    """Peak perturbation force (perturbation intensity).
+
+    Parameters
+    ----------
+    force : array_like, shape (n_frames,)
+        Force sensor signal (N).
+
+    Returns
+    -------
+    float
+        ``max(force - force[-1])`` (N): maximum of the signal with the last
+        value as zero offset, as ``MaxForce`` in the previous ``AllQtyDF.csv``.
+        The manuscript describes the Low / Medium / High intensity levels by this
+        maximal force (54 +- 12, 68 +- 13 and 88 +- 20 N, §2.1.1).
+    """
+    f = np.asarray(force, dtype=float)
+    return float(np.max(f - f[-1]))
+
